@@ -1,0 +1,11 @@
+[project]
+name = "shared-auth-test-upgrade-compatibility-tests"
+version = "0.1.0"
+description = "Forward/backward schema compatibility, migration round-trip, negotiation, snapshot replay, and destructive-change guard tests."
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.deep-tests]
+suite = "upgrade"
+deterministic = true
+network_default = "disabled"
