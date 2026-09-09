@@ -1,0 +1,53 @@
+name: Shared Auth external validation upgrade
+on:
+  pull_request:
+    paths: ['.github/workflows/shared-validation.yml', 'docs/external-validation.md']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/shared-validation.yml', 'docs/external-validation.md']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  candidate-versus-baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: ores-otel-test/contract-conformance-tests
+          ref: ee81898748ac6c9885111d4ff9ae6ff3d87b1110
+          path: tmp/harness
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: ores-otel/ores-lib-core
+          ref: 6ce47f202cef70112950b06af8c3c24abe7eb288
+          path: tmp/harness/tmp/core
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: ores-otel/ores-lib-core
+          ref: 5db0c66a85098fa3eff55d2df929d078999712e2
+          path: tmp/harness/tmp/baseline
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260
+      - name: Run immutable external harness on Node 24 and native runtimes
+        working-directory: tmp/harness
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = ee81898748ac6c9885111d4ff9ae6ff3d87b1110
+          bash validation/run.sh
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shared-auth-validation-${{ github.sha }}
+          path: tmp/harness/tmp/evidence/
+          if-no-files-found: error
+          retention-days: 14
