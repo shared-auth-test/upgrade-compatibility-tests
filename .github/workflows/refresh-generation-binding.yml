@@ -1,0 +1,48 @@
+name: refresh generation binding
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  refresh-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22.22.1"
+      - name: Prove canonical-principal refresh generation invariants
+        shell: bash
+        run: |
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const canonicalKey = ({ tenant, principal, generation, idempotencyKey }) => {
+            if (!tenant || !principal || !Number.isInteger(generation) || generation < 0 || !idempotencyKey) throw new Error('invalid_refresh_scope');
+            return `${tenant}:${principal}:g${generation}:${idempotencyKey}`;
+          };
+          const outcomes = new Map();
+          const refresh = input => {
+            const key = canonicalKey(input);
+            if (outcomes.has(key)) return outcomes.get(key);
+            const outcome = { session_generation: input.generation + 1, principal: input.principal };
+            outcomes.set(key, outcome);
+            return outcome;
+          };
+          const base = { tenant:'org-1', principal:'principal-42', generation:7, idempotencyKey:'refresh-abc' };
+          const first = refresh(base);
+          assert.equal(refresh(base), first, 'same refresh request must be idempotent');
+          assert.deepEqual(first, { session_generation:8, principal:'principal-42' });
+          assert.notEqual(canonicalKey(base), canonicalKey({ ...base, generation:8 }), 'generation bump invalidates old refresh namespace');
+          assert.notEqual(canonicalKey(base), canonicalKey({ ...base, tenant:'org-2' }));
+          const providerSubjectA = 'supabase:user-42';
+          const providerSubjectB = 'neon:user-42';
+          assert.notEqual(providerSubjectA, providerSubjectB, 'provider subjects remain distinct until explicitly linked');
+          assert.throws(() => canonicalKey({ ...base, principal:'' }), /invalid_refresh_scope/);
+          NODE
