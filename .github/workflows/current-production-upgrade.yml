@@ -1,0 +1,49 @@
+name: Current production upgrade surface
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  current-production-upgrade:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: "${{ secrets.TEST_FLEET_GITHUB_TOKEN || github.token }}"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Run native deterministic upgrade suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f src/deep_tests/upgrade_model.py ]]; then PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_*.py' -v
+          elif [[ -f package.json ]] && node -e "const p=require('./package.json'); process.exit(p.scripts&&p.scripts.test?0:1)"; then npm test
+          elif [[ -f tests/test_suite.py ]]; then python3 -m unittest discover -s tests -p 'test_*.py' -v
+          else echo 'No recognized deterministic upgrade suite; add an explicit native runner.'; exit 1; fi
+          if [[ -f scripts/verify_repository.py ]]; then python3 scripts/verify_repository.py; fi
+      - name: Verify exact current production contract authorities
+        shell: bash
+        run: |
+          set -euo pipefail
+          p="${GITHUB_REPOSITORY_OWNER%-test}"
+          mapfile -t repos < <(gh api --paginate "/orgs/$p/repos?type=all&per_page=100" --jq '.[] | select(.archived|not) | .name')
+          ((${#repos[@]})) || { echo 'No production repositories visible; configure TEST_FLEET_GITHUB_TOKEN'; exit 1; }
+          seen=0
+          for r in "${repos[@]}"; do
+            case "$r" in *interfaces*|*schema*|*contract*|*api*|*lib-core*) ;; *) continue ;; esac
+            branch="$(gh api "/repos/$p/$r" --jq .default_branch)"; sha="$(gh api "/repos/$p/$r/commits/$branch" --jq .sha)"; [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+            marker=0
+            for root in .zpkg.toml Cargo.toml package.json pyproject.toml go.mod pubspec.yaml; do if gh api "/repos/$p/$r/contents/$root?ref=$branch" >/dev/null 2>&1; then marker=1; break; fi; done
+            paths="$(gh api "/repos/$p/$r/git/trees/$sha?recursive=1" --jq '.tree[]?.path' 2>/dev/null || true)"
+            if ((marker==1)) || grep -Eiq '(\.tsp$|\.proto$|\.wit$|(^|/)openapi[^/]*\.(json|ya?ml)$|(^|/)[^/]*schema[^/]*\.json$)' <<<"$paths"; then seen=$((seen + 1)); fi
+          done
+          ((seen > 0)) || { echo 'No current production contract authority visible; configure TEST_FLEET_GITHUB_TOKEN'; exit 1; }
+      - name: zed-pkg interfaces compatibility canary
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/zed-pkg/zed-interfaces.git .deps/zed-interfaces
+          test -e .deps/zed-interfaces/Cargo.toml || test -e .deps/zed-interfaces/package.json || test -e .deps/zed-interfaces/pubspec.yaml
