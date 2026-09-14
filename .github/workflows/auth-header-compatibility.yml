@@ -1,0 +1,44 @@
+name: auth header compatibility admission
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  header-compatibility:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: "22.22.1"
+      - name: Prove old mixed-case clients normalize to lowercase without alias collisions
+        shell: bash
+        run: |
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const normalize = pairs => {
+            const out = new Map();
+            for (const [name, value] of pairs) {
+              const key = name.toLowerCase();
+              if (out.has(key) && out.get(key) !== value) throw new Error('header_alias_collision');
+              out.set(key, value);
+            }
+            return out;
+          };
+          const legacy = normalize([
+            ['X-ORES-REQUEST-ID','r1'],
+            ['x-ores-workspace-id','w1'],
+            ['Authorization','Bearer token'],
+          ]);
+          assert.equal(legacy.get('x-ores-request-id'),'r1');
+          assert.equal(legacy.get('x-ores-workspace-id'),'w1');
+          assert.equal(legacy.get('authorization'),'Bearer token');
+          assert.throws(() => normalize([['X-ORES-REQUEST-ID','r1'],['x-ores-request-id','r2']]), /header_alias_collision/);
+          NODE
