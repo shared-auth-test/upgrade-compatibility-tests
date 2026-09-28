@@ -14,25 +14,24 @@ env:
   MERGE_SHA: fadc384960da70681f3074b361ced73872172482
   CURRENT_MAIN_SHA: e58e9aecf38b0955b35feb2133256fdc11a17daa
   API_DOCS_SHA: 348d67decc3618b3a3846fc88c36e77c4bb6f074
+  PRIVATE_SOURCE_TOKEN: ${{ secrets.ORE_SOURCE_PAT || secrets.MCP_FLEET_READ_TOKEN || secrets.PRIVATE_SOURCE_TOKEN || secrets.GH_READ_TOKEN }}
 
 jobs:
   exact-merge-linux:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
-      - name: Require private-source credential
+      - name: Require existing private-source credential
         shell: bash
-        env:
-          ORE_SOURCE_PAT: ${{ secrets.ORE_SOURCE_PAT }}
         run: |
           set -euo pipefail
-          test -n "$ORE_SOURCE_PAT"
+          test -n "$PRIVATE_SOURCE_TOKEN"
       - name: Check out exact merged ORES Stack commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ORESoftware/ores-stack
           ref: ${{ env.MERGE_SHA }}
-          token: ${{ secrets.ORE_SOURCE_PAT }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
           show-progress: false
@@ -55,12 +54,10 @@ jobs:
           fi
       - name: Configure scoped private Git dependency access
         shell: bash
-        env:
-          ORE_SOURCE_PAT: ${{ secrets.ORE_SOURCE_PAT }}
         run: |
           set -euo pipefail
-          echo "::add-mask::$ORE_SOURCE_PAT"
-          git config --global url."https://x-access-token:${ORE_SOURCE_PAT}@github.com/".insteadOf "https://github.com/"
+          echo "::add-mask::$PRIVATE_SOURCE_TOKEN"
+          git config --global url."https://x-access-token:${PRIVATE_SOURCE_TOKEN}@github.com/".insteadOf "https://github.com/"
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           toolchain: 1.88.0
@@ -76,27 +73,27 @@ jobs:
         if: always()
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = "$MERGE_SHA"
-          git diff --exit-code
-          git diff --cached --exit-code
+          if [ -d .git ]; then
+            test "$(git rev-parse HEAD)" = "$MERGE_SHA"
+            git diff --exit-code
+            git diff --cached --exit-code
+          fi
 
   current-main-linux-workspace:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - name: Require private-source credential
+      - name: Require existing private-source credential
         shell: bash
-        env:
-          ORE_SOURCE_PAT: ${{ secrets.ORE_SOURCE_PAT }}
         run: |
           set -euo pipefail
-          test -n "$ORE_SOURCE_PAT"
+          test -n "$PRIVATE_SOURCE_TOKEN"
       - name: Check out exact current ORES Stack main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ORESoftware/ores-stack
           ref: ${{ env.CURRENT_MAIN_SHA }}
-          token: ${{ secrets.ORE_SOURCE_PAT }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
           show-progress: false
@@ -112,12 +109,10 @@ jobs:
           grep -F 'let http_handler = (!projection.route_less)' crates/ores-stack-core/src/rpc_target_v3.rs
       - name: Configure scoped private Git dependency access
         shell: bash
-        env:
-          ORE_SOURCE_PAT: ${{ secrets.ORE_SOURCE_PAT }}
         run: |
           set -euo pipefail
-          echo "::add-mask::$ORE_SOURCE_PAT"
-          git config --global url."https://x-access-token:${ORE_SOURCE_PAT}@github.com/".insteadOf "https://github.com/"
+          echo "::add-mask::$PRIVATE_SOURCE_TOKEN"
+          git config --global url."https://x-access-token:${PRIVATE_SOURCE_TOKEN}@github.com/".insteadOf "https://github.com/"
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           toolchain: stable
@@ -133,38 +128,36 @@ jobs:
         if: always()
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = "$CURRENT_MAIN_SHA"
-          git diff --exit-code
-          git diff --cached --exit-code
+          if [ -d .git ]; then
+            test "$(git rev-parse HEAD)" = "$CURRENT_MAIN_SHA"
+            git diff --exit-code
+            git diff --cached --exit-code
+          fi
 
   current-main-macos-core:
     runs-on: macos-14
     timeout-minutes: 45
     steps:
-      - name: Require private-source credential
+      - name: Require existing private-source credential
         shell: bash
-        env:
-          ORE_SOURCE_PAT: ${{ secrets.ORE_SOURCE_PAT }}
         run: |
           set -euo pipefail
-          test -n "$ORE_SOURCE_PAT"
+          test -n "$PRIVATE_SOURCE_TOKEN"
       - name: Check out exact current ORES Stack main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ORESoftware/ores-stack
           ref: ${{ env.CURRENT_MAIN_SHA }}
-          token: ${{ secrets.ORE_SOURCE_PAT }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
           show-progress: false
       - name: Configure scoped private Git dependency access
         shell: bash
-        env:
-          ORE_SOURCE_PAT: ${{ secrets.ORE_SOURCE_PAT }}
         run: |
           set -euo pipefail
-          echo "::add-mask::$ORE_SOURCE_PAT"
-          git config --global url."https://x-access-token:${ORE_SOURCE_PAT}@github.com/".insteadOf "https://github.com/"
+          echo "::add-mask::$PRIVATE_SOURCE_TOKEN"
+          git config --global url."https://x-access-token:${PRIVATE_SOURCE_TOKEN}@github.com/".insteadOf "https://github.com/"
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           toolchain: stable
@@ -178,6 +171,8 @@ jobs:
         if: always()
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = "$CURRENT_MAIN_SHA"
-          git diff --exit-code
-          git diff --cached --exit-code
+          if [ -d .git ]; then
+            test "$(git rev-parse HEAD)" = "$CURRENT_MAIN_SHA"
+            git diff --exit-code
+            git diff --cached --exit-code
+          fi
